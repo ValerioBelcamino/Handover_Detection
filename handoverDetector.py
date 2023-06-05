@@ -13,15 +13,48 @@ class HandoverDetector():
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
         # Define the lower and upper bounds for the orange color in HSV
-        orange_lower = np.array([5, 50, 50])
-        orange_upper = np.array([15, 255, 255])
+        # orange_lower_perimeter = np.array([  1, 40, 83])
+        # orange_upper_perimeter = np.array([23, 255, 254])
+        orange_lower_perimeter = np.array([  1, 25, 60])
+        orange_upper_perimeter = np.array([50, 255, 254])
         
+
         # Threshold the image to get only the orange color
-        mask = cv2.inRange(hsv_image, orange_lower, orange_upper)
+        mask_perimeter = cv2.inRange(hsv_image, orange_lower_perimeter, orange_upper_perimeter)
         
-        # Find contours in the mask
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # mask_perimeter = cv2.dilate(mask_perimeter, None, iterations=1)
+        mask_perimeter= cv2.morphologyEx(mask_perimeter, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)))
+
         
+        contours, _ = cv2.findContours(mask_perimeter, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        destination = np.array([[0, 0], [0, 480-1], [640-1, 480-1], [640-1, 0]], dtype=np.float32)
+
+        if len(contours) > 0:
+            # approx = cv2.approxPolyDP(contours, 0.01 * cv2.arcLength(contours[0], True), True)
+            # cv2.drawContours(image, contours[0], -1, (0, 255, 0), 2)
+            x, y, w, h = cv2.boundingRect(contours[0])
+            # cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            approx = cv2.approxPolyDP(contours[0], 0.01 * cv2.arcLength(contours[0], True), True)
+            # print(approx)
+            corners = self.find_corners(approx)
+            print(corners.shape)
+
+            # cv2.drawContours(image, [approx], -1, (0, 255, 0), 2)
+            # for c in corners:
+            #     cv2.circle(image, c, 5, (0, 0, 255), -1)
+
+            tf_matrix = cv2.getPerspectiveTransform(corners, destination)
+            print(tf_matrix)
+            cv2.warpPerspective(image, tf_matrix, (640, 480), image, cv2.INTER_LINEAR)
+            cv2.warpPerspective(mask_perimeter, tf_matrix, (640, 480), mask_perimeter, cv2.INTER_LINEAR)
+            cv2.imshow("mask_perimeter", mask_perimeter)
+            # perimeter = cv2.arcLength(contours[0], True)
+            # print(perimeter)
+            # approx = cv2.approxPolyDP(contours[0], 0.01 * cv2.arcLength(contours[0], True), True)
+            # cv2.drawContours(image, approx, -1, (0, 255, 0), 2)
+        return
         if len(contours) == 0:
             # If no orange shape is found, compute optical flow
             
@@ -124,11 +157,21 @@ class HandoverDetector():
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
+    def find_corners(self, pts, image_size=(640, 480)):
+        pts= pts.reshape((pts.shape[0], -1))
+        # print(pts.shape)
+        top_left = np.array(sorted(pts, key=lambda x: np.sqrt((x[0]-0)**2 + (x[1]-0)**2)))
+        top_right = np.array(sorted(pts, key=lambda x: np.sqrt((x[0]-image_size[0])**2 + (x[1]-0)**2)))
+        bottom_left = np.array(sorted(pts, key=lambda x: np.sqrt((x[0]-0)**2 + (x[1]-image_size[1])**2)))
+        bottom_right = np.array(sorted(pts, key=lambda x: np.sqrt((x[0]-image_size[0])**2 + (x[1]-image_size[1])**2)))
+
+        return np.array([top_left[0], bottom_left[0], bottom_right[0], top_right[0]], dtype=np.float32)
+
     def cameraLoop(self):  
         cap = cv2.VideoCapture(0)
         while True:
             _, frame = cap.read()
-            # self.find_orange_shape_and_compute_optical_flow(frame)
+            self.find_orange_shape_and_compute_optical_flow(frame)
             cv2.imshow("Camera", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
