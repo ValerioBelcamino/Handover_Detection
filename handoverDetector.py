@@ -19,6 +19,12 @@ class HandoverDetector():
 
 
     def find_orange_shape_and_compute_optical_flow(self, image):
+        if not self.motion_detection(image):
+            self.find_orange_shape(image)
+
+
+
+    def find_orange_shape(self, image):
         # Convert the image to the HSV color space
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
@@ -53,17 +59,21 @@ class HandoverDetector():
             warped_image = image.copy()
             cv2.warpPerspective(image, tf_matrix, (640, 480), warped_image, cv2.INTER_LINEAR)
             cv2.warpPerspective(mask_perimeter, tf_matrix, (640, 480), mask_perimeter, cv2.INTER_LINEAR)
-            # cv2.imshow("mask_perimeter", mask_perimeter)
+            cv2.imshow("mask_perimeter", mask_perimeter)
             # print(perimeter)
             filled_ratio = 1 - (cv2.countNonZero(mask_perimeter) / (640*480))
 
             filled_threshold = self.mask_offset
             if filled_ratio > filled_threshold:
                 print(f"Filled box! {filled_ratio:.2}")
+                return True
             else:
                 print(f"Empty box! {filled_ratio:.2}")
+                return False
 
-            # Convert the image to grayscale
+
+    def motion_detection(self, image):
+            #    Convert the image to grayscale
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             if self.of_prev_gray is None:
                 self.of_prev_gray = gray
@@ -78,14 +88,15 @@ class HandoverDetector():
             # rgb_mask = cv2.cvtColor(self.of_mask, cv2.COLOR_HSV2BGR)
 
             diff_frame = cv2.absdiff(self.of_prev_gray, gray)
-            # cv2.imshow("optical_flow", diff_frame)
+            cv2.imshow("optical_flow", diff_frame)
 
             motion_idx = np.sum(diff_frame) / (640*480)
             # print(f'Motion Index: {motion_idx:.4}\n\n')
        
+            self.of_prev_gray = gray
             if motion_idx > self.motion_threshold:
                 print("Handover detected!", motion_idx)
-            self.of_prev_gray = gray
+                return True
 
 
 
